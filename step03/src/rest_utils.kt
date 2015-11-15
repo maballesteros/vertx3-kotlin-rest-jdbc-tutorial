@@ -13,6 +13,14 @@ import kotlin.reflect.KClass
 
 val GSON = Gson()
 
+
+fun Router.get(path: String, rctx:RoutingContext.() -> Unit) = get(path).handler { it.rctx() }
+fun Router.post(path: String, rctx:RoutingContext.() -> Unit) = post(path).handler { it.rctx() }
+fun Router.put(path: String, rctx:RoutingContext.() -> Unit) = put(path).handler { it.rctx() }
+fun Router.delete(path: String, rctx:RoutingContext.() -> Unit) = delete(path).handler { it.rctx() }
+
+
+
 fun RoutingContext.param(name: String): String =
     request().getParam(name)
 

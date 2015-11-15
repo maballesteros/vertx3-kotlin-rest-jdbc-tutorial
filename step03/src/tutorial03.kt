@@ -15,7 +15,7 @@ import java.util.*
 import kotlin.reflect.KClass
 
 /**
- * Step03 - JDBC backed REST User repository
+ * Step03 - In memory REST User repository (with simplified REST definitions)
  */
 
 object Vertx3KotlinRestJdbcTutorial {
@@ -24,27 +24,15 @@ object Vertx3KotlinRestJdbcTutorial {
     @JvmStatic fun main(args: Array<String>) {
         val port = 9000
         val vertx = Vertx.vertx()
-
-        val client = JDBCClient.createShared(vertx, JsonObject()
-                .put("url", "jdbc:hsqldb:mem:test?shutdown=true")
-                .put("driver_class", "org.hsqldb.jdbcDriver")
-                .put("max_pool_size", 30));
-        val userService = JdbcUserService(client)
-
+        val userService = MemoryUserService()
 
         vertx.createHttpServer().restAPI(vertx) {
 
-            get("/:userId").handler { 
-                it.send(userService.getUser(it.param("userId")))
-            }
+            get("/:userId") { send(userService.getUser(param("userId"))) }
 
-            post("/").handler {
-                it.send(userService.addUser(it.bodyAs(User::class)))
-            }
+            post("/") { send(userService.addUser(bodyAs(User::class))) }
 
-            delete("/:userId").handler {
-                it.send(userService.remUser(it.param("userId")))
-            }
+            delete("/:userId") { send(userService.remUser(param("userId"))) }
 
         }.listen(port) {
             if (it.succeeded()) println("Server listening at $port")
@@ -72,32 +60,26 @@ interface UserService {
 // IMPLEMENTATION
 
 
-class JdbcUserService(private val client: JDBCClient): UserService {
+class MemoryUserService(): UserService {
+
+    val _users = HashMap<String, User>()
 
     init {
-        client.execute("""
-        CREATE TABLE USERS
-            (ID VARCHAR(25) NOT NULL,
-            FNAME VARCHAR(25) NOT NULL,
-            LNAME VARCHAR(25) NOT NULL)
-        """).setHandler {
-            val user = User("1", "user1_fname", "user1_lname")
-            addUser(user)
-            println("Added user $user")
-        }
+        addUser(User("1", "user1_fname", "user1_lname"))
     }
 
-    override fun getUser(id: String): Future<User> =
-        client.queryOne("SELECT ID, FNAME, LNAME FROM USERS WHERE ID=?", listOf(id)) {
-            it.results.map { User(it.getString(0), it.getString(1), it.getString(2)) }.first()
-        }
+    override fun getUser(id: String): Future<User> {
+        return if (_users.containsKey(id)) Future.succeededFuture(_users.getOrImplicitDefault(id))
+        else Future.failedFuture(IllegalArgumentException("Unknown user $id"))
+    }
 
+    override fun addUser(user: User): Future<Unit> {
+        _users.put(user.id, user)
+        return Future.succeededFuture()
+    }
 
-    override fun addUser(user: User): Future<Unit> =
-        client.update("INSERT INTO USERS (ID, FNAME, LNAME) VALUES (?, ?, ?)",
-                listOf(user.id, user.fname, user.lname))
-
-
-    override fun remUser(id: String): Future<Unit> =
-        client.update("DELETE FROM USERS WHERE ID = ?", listOf(id))
+    override fun remUser(id: String): Future<Unit> {
+        _users.remove(id)
+        return Future.succeededFuture()
+    }
 }
