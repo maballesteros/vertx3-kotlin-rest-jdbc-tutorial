@@ -26,16 +26,17 @@ object Vertx3KotlinRestJdbcTutorial {
 
         router.get("/:userId").handler { ctx ->
             val userId = ctx.request().getParam("userId")
-            userService.getUser(userId){ jsonResponse(ctx, it) }
+            jsonResponse(ctx, userService.getUser(userId))
         }
 
         router.post("/").handler { ctx ->
-            userService.addUser(jsonRequest(ctx, User::class)) { jsonResponse(ctx, it) }
+            val user = jsonRequest<User>(ctx, User::class)
+            jsonResponse(ctx, userService.addUser(user))
         }
 
         router.delete("/:userId").handler { ctx ->
             val userId = ctx.request().getParam("userId")
-            userService.remUser(userId) { jsonResponse(ctx, it) }
+            jsonResponse(ctx, userService.remUser(userId))
         }
 
         server.requestHandler { router.accept(it) }.listen(port) {
@@ -49,11 +50,13 @@ object Vertx3KotlinRestJdbcTutorial {
 
 
     fun jsonResponse<T>(ctx: RoutingContext, future: Future<T>) {
-        if (future.succeeded()) {
-            val res = if (future.result() == null) "" else gson.toJson(future.result())
-            ctx.response().end(res)
-        } else {
-            ctx.response().setStatusCode(500).end(future.cause().toString())
+        future.setHandler {
+            if (it.succeeded()) {
+                val res = if (it.result() == null) "" else gson.toJson(it.result())
+                ctx.response().end(res)
+            } else {
+                ctx.response().setStatusCode(500).end(it.cause().toString())
+            }
         }
     }
 }
@@ -67,9 +70,9 @@ data class User(val id:String, val fname: String, val lname: String)
 
 interface UserService {
 
-    fun getUser(id: String, future: (Future<User>) -> Unit)
-    fun addUser(user: User, future: (Future<Unit>) -> Unit)
-    fun remUser(id: String, future: (Future<Unit>) -> Unit)
+    fun getUser(id: String): Future<User>
+    fun addUser(user: User): Future<Unit>
+    fun remUser(id: String): Future<Unit>
 }
 
 
@@ -82,21 +85,21 @@ class MemoryUserService(): UserService {
     val _users = HashMap<String, User>()
 
     init {
-        addUser(User("1", "user1_fname", "user1_lname"),{})
+        addUser(User("1", "user1_fname", "user1_lname"))
     }
 
-    override fun getUser(id: String, future: (Future<User>) -> Unit) {
-        if (_users.containsKey(id)) future(Future.succeededFuture(_users.getOrImplicitDefault(id)))
-        else future(Future.failedFuture(IllegalArgumentException("Unknown user $id")))
+    override fun getUser(id: String): Future<User> {
+        return if (_users.containsKey(id)) Future.succeededFuture(_users.getOrImplicitDefault(id))
+        else Future.failedFuture(IllegalArgumentException("Unknown user $id"))
     }
 
-    override fun addUser(user: User, future: (Future<Unit>) -> Unit) {
+    override fun addUser(user: User): Future<Unit> {
         _users.put(user.id, user)
-        future(Future.succeededFuture())
+        return Future.succeededFuture()
     }
 
-    override fun remUser(id: String, future: (Future<Unit>) -> Unit) {
+    override fun remUser(id: String): Future<Unit> {
         _users.remove(id)
-        future(Future.succeededFuture())
+        return Future.succeededFuture()
     }
 }
